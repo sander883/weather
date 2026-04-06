@@ -247,46 +247,60 @@ class DataFetcher:
 
     def prepare_training_data(self, location: str, days: int = 30) -> tuple:
         """
-        Prepare data for model training.
+        Prepare data for model training with proper alignment.
 
         Returns:
-            Tuple of (features_df, target_df)
+            Tuple of (features_df, target_series)
         """
         df = self.load_historical_data(location, days)
 
         if df.empty:
             logger.error(f"No data available for {location}")
-            return pd.DataFrame(), pd.DataFrame()
+            return pd.DataFrame(), pd.Series(dtype=float)
 
-        # Ensure timestamp is datetime
+        # Ensure timestamp is datetime and sort
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp')
+            df = df.sort_values('timestamp').reset_index(drop=True)
+        else:
+            logger.warning(f"No timestamp column in data for {location}")
+            df = df.reset_index(drop=True)
 
-        # Clean data
+        # Clean data first
         df = self._clean_data(df)
 
-        # Create target variable (rain probability)
-        # For now, use rain chance from API if available, else use precipitation
-        if 'rain_probability' in df.columns:
-            target = df[['timestamp', 'rain_probability']].copy()
-            target.columns = ['timestamp', 'target']
+        # Remove rows with any NaN in key columns
+        key_cols = ['temperature', 'humidity', 'wind_speed', 'clouds', 'precipitation']
+        df = df.dropna(subset=key_cols)
+
+        if df.empty:
+            logger.error(f"No valid data after cleaning for {location}")
+            return pd.DataFrame(), pd.Series(dtype=float)
+
+        # Create target variable
+        if 'rain_probability' in df.columns and df['rain_probability'].notna().any():
+            target = df['rain_probability'].copy()
         else:
             # Threshold: > 1mm = rain
-            target = df[['timestamp', 'precipitation']].copy()
-            target.columns = ['timestamp', 'target']
-            target['target'] = (target['target'] > 1.0).astype(int)
+            target = (df['precipitation'] > 1.0).astype(float)
 
-        # Keep timestamp and numeric features for feature engineering
-        feature_cols = ['timestamp', 'temperature', 'humidity', 'wind_speed', 'clouds', 'pressure']
-        available_cols = [col for col in feature_cols if col in df.columns]
-        features = df[available_cols].copy()
+        # Select features (only numeric, no timestamp)
+        feature_cols = ['temperature', 'humidity', 'wind_speed', 'clouds', 'pressure']
+        features = df[feature_cols].copy()
 
-        # Ensure all numeric columns are numeric
-        numeric_cols = [col for col in available_cols if col != 'timestamp']
-        for col in numeric_cols:
+        # Ensure all columns are numeric
+        for col in features.columns:
             features[col] = pd.to_numeric(features[col], errors='coerce')
 
+        # Fill any remaining NaN
+        features = features.fillna(features.mean())
+
+        # CRITICAL: Ensure alignment
+        assert len(features) == len(target), f"Misaligned data: features={len(features)}, target={len(target)}"
+        assert features.index.equals(target.index) or (len(features) == len(target)), \
+            "Features and target indices don't match"
+
+        logger.info(f"Prepared {len(features)} samples with {len(features.columns)} features for {location}")
         return features, target
 
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:

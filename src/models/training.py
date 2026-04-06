@@ -37,55 +37,75 @@ class ModelTrainer:
         self.model_dir = Path('data/models')
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
-    def prepare_training_data(self, features: pd.DataFrame, target: pd.DataFrame,
+    def prepare_training_data(self, features: pd.DataFrame, target,
                              test_size: float = 0.2) -> Tuple[np.ndarray, np.ndarray,
                                                               np.ndarray, np.ndarray]:
         """
-        Prepare and split training data.
+        Prepare and split training data with strict alignment.
 
         Args:
             features: Feature DataFrame
-            target: Target variable Series
+            target: Target variable (Series or array-like)
             test_size: Fraction for test set
 
         Returns:
             Tuple of (X_train, X_test, y_train, y_test)
         """
-        # Ensure shapes match
+        # Ensure we have data
+        if features.empty:
+            logger.error("Features DataFrame is empty")
+            raise ValueError("Features DataFrame is empty")
+
+        # Convert target to Series if needed
+        if isinstance(target, pd.DataFrame):
+            if len(target.columns) > 1:
+                target = target.iloc[:, 0]  # Take first column
+            target = target.squeeze()
+
+        # CRITICAL: Strict alignment
         if len(features) != len(target):
+            logger.error(f"Data mismatch: features={len(features)}, target={len(target)}")
             min_len = min(len(features), len(target))
-            features = features.iloc[:min_len]
-            target = target.iloc[:min_len]
+            features = features.iloc[:min_len].copy()
+            if isinstance(target, pd.Series):
+                target = target.iloc[:min_len].copy()
+            else:
+                target = target[:min_len]
 
-        # Drop non-numeric and timestamp columns
-        numeric_features = features.select_dtypes(include=[np.number])
+        # Drop non-numeric columns
+        numeric_features = features.select_dtypes(include=[np.number]).copy()
 
-        # Remove timestamp if it exists
-        if 'timestamp' in numeric_features.columns:
-            numeric_features = numeric_features.drop('timestamp', axis=1)
+        if numeric_features.empty:
+            logger.error("No numeric features available")
+            raise ValueError("No numeric features available")
 
-        logger.info(f"Using {len(numeric_features.columns)} numeric features")
+        logger.info(f"Using {len(numeric_features.columns)} numeric features: {list(numeric_features.columns)}")
 
         # Fill NaN values
         numeric_features = numeric_features.fillna(numeric_features.mean())
-        target = target.fillna(target.mean())
 
-        # Ensure target is 1D
-        if hasattr(target, 'values'):
-            target_array = target.values.ravel()
+        # Ensure target is 1D array
+        if isinstance(target, pd.Series):
+            y = target.values
         else:
-            target_array = target.ravel()
+            y = np.asarray(target).ravel()
+
+        # Final check
+        if len(numeric_features) != len(y):
+            raise ValueError(f"Final alignment failed: X={len(numeric_features)}, y={len(y)}")
+
+        logger.info(f"Training data: {len(numeric_features)} samples, {len(numeric_features.columns)} features")
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
-            numeric_features, target_array,
+            numeric_features.values, y,
             test_size=test_size,
             random_state=42,
             shuffle=False  # Keep temporal order
         )
 
-        logger.info(f"Training set size: {len(X_train)}, Test set size: {len(X_test)}")
-        return X_train.values, X_test.values, y_train, y_test
+        logger.info(f"Train: {len(X_train)}, Test: {len(X_test)}")
+        return X_train, X_test, y_train, y_test
 
     def train(self, X_train: np.ndarray, y_train: np.ndarray,
               X_val: Optional[np.ndarray] = None,

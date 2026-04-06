@@ -63,6 +63,9 @@ class WeatherAPIClient:
         except requests.exceptions.Timeout:
             logger.error(f"Request timeout to {url}")
             return None
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"API HTTP error {response.status_code}: {response.text}")
+            return None
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {e}")
             return None
@@ -95,6 +98,7 @@ class OpenWeatherMapClient(WeatherAPIClient):
             'units': 'metric'
         }
 
+        logger.debug(f"Fetching OpenWeatherMap data from {url}")
         data = self._sync_request(url, params)
         if not data:
             return None

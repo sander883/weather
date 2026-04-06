@@ -5,6 +5,11 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Dict, Any
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
 
 from src.utils.logger import get_logger
 from src.utils.helpers import load_config, load_markets

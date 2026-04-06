@@ -96,12 +96,25 @@ class LearningLoop:
         if self.last_retrain is None:
             return True
 
-        retrain_interval = learning_cfg.get('retraining', {}).get('trigger_conditions', {})\
-            .get('model_age', 604800)  # 7 days default
+        # Safely access retraining config
+        try:
+            retraining_cfg = learning_cfg.get('retraining', {})
+            if isinstance(retraining_cfg, list):
+                logger.warning("retraining config is list, expected dict. Using empty dict.")
+                retraining_cfg = {}
 
-        if (datetime.utcnow() - self.last_retrain).total_seconds() > retrain_interval:
-            logger.info("Model age exceeded retrain interval")
-            return True
+            trigger_conditions = retraining_cfg.get('trigger_conditions', {})
+            if isinstance(trigger_conditions, list):
+                logger.warning("trigger_conditions is list, expected dict. Using empty dict.")
+                trigger_conditions = {}
+
+            retrain_interval = trigger_conditions.get('model_age', 604800)  # 7 days default
+
+            if (datetime.utcnow() - self.last_retrain).total_seconds() > retrain_interval:
+                logger.info("Model age exceeded retrain interval")
+                return True
+        except Exception as e:
+            logger.error(f"Error checking model age: {e}")
 
         # Check accuracy drop trigger
         if self._check_accuracy_drop():
@@ -109,11 +122,21 @@ class LearningLoop:
             return True
 
         # Check new samples trigger
-        min_samples = learning_cfg.get('retraining', {}).get('trigger_conditions', {})\
-            .get('new_samples', 500)
-        if self._count_new_feedback() >= min_samples:
-            logger.info(f"Accumulated {min_samples} new samples, retraining triggered")
-            return True
+        try:
+            retraining_cfg = learning_cfg.get('retraining', {})
+            if isinstance(retraining_cfg, list):
+                retraining_cfg = {}
+
+            trigger_conditions = retraining_cfg.get('trigger_conditions', {})
+            if isinstance(trigger_conditions, list):
+                trigger_conditions = {}
+
+            min_samples = trigger_conditions.get('new_samples', 500)
+            if self._count_new_feedback() >= min_samples:
+                logger.info(f"Accumulated {min_samples} new samples, retraining triggered")
+                return True
+        except Exception as e:
+            logger.error(f"Error checking new samples: {e}")
 
         return False
 
@@ -299,17 +322,30 @@ class LearningLoop:
         if len(self.model_performance_history) < 2:
             return False
 
-        recent = self.model_performance_history[-1]
-        previous = self.model_performance_history[-2]
+        try:
+            recent = self.model_performance_history[-1]
+            previous = self.model_performance_history[-2]
 
-        recent_acc = recent['metrics'].get('val_accuracy', 0)
-        previous_acc = previous['metrics'].get('val_accuracy', 0)
+            recent_acc = recent['metrics'].get('val_accuracy', 0)
+            previous_acc = previous['metrics'].get('val_accuracy', 0)
 
-        accuracy_drop = previous_acc - recent_acc
-        threshold = self.learning_config.get('retraining', {}).get('trigger_conditions', {})\
-            .get('accuracy_drop', 0.05)
+            accuracy_drop = previous_acc - recent_acc
 
-        return accuracy_drop > threshold
+            # Safely access retraining config
+            retraining_cfg = self.learning_config.get('retraining', {})
+            if isinstance(retraining_cfg, list):
+                retraining_cfg = {}
+
+            trigger_conditions = retraining_cfg.get('trigger_conditions', {})
+            if isinstance(trigger_conditions, list):
+                trigger_conditions = {}
+
+            threshold = trigger_conditions.get('accuracy_drop', 0.05)
+
+            return accuracy_drop > threshold
+        except Exception as e:
+            logger.error(f"Error checking accuracy drop: {e}")
+            return False
 
     def _count_new_feedback(self) -> int:
         """Count new feedback records since last retrain."""

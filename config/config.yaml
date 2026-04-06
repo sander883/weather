@@ -164,9 +164,9 @@ learning:
   retraining:
     schedule: weekly
     trigger_conditions:
-      - model_age: 604800  # 7 days
-      - accuracy_drop: 0.05  # 5% drop
-      - new_samples: 500
+      model_age: 604800  # 7 days
+      accuracy_drop: 0.05  # 5% drop
+      new_samples: 500
 
   hyperparameter_tuning:
     enabled: true

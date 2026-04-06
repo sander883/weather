@@ -7,9 +7,25 @@ from datetime import datetime
 from typing import Dict, Any
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
 # Load environment variables from .env file
-load_dotenv()
+# Find the project root and load .env from there
+project_root = Path(__file__).parent.parent
+env_file = project_root / '.env'
+load_dotenv(dotenv_path=env_file, override=True)
+
+# Debug: Print if .env was found
+if env_file.exists():
+    print(f"✓ Loaded .env from: {env_file}")
+else:
+    print(f"✗ .env file not found at: {env_file}")
+
+# Verify API keys are loaded
+if os.getenv('OPENWEATHERMAP_API_KEY'):
+    print("✓ OPENWEATHERMAP_API_KEY loaded")
+else:
+    print("✗ OPENWEATHERMAP_API_KEY not found")
 
 from src.utils.logger import get_logger
 from src.utils.helpers import load_config, load_markets

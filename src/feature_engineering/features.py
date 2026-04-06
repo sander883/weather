@@ -74,10 +74,27 @@ class FeatureEngineer:
 
     def _add_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add time-based features."""
-        df['hour'] = df.index.hour
-        df['day_of_week'] = df.index.dayofweek
-        df['day_of_month'] = df.index.day
-        df['month'] = df.index.month
+        # Handle both index and column timestamp
+        if df.index.name == 'timestamp' or isinstance(df.index, pd.DatetimeIndex):
+            df['hour'] = df.index.hour
+            df['day_of_week'] = df.index.dayofweek
+            df['day_of_month'] = df.index.day
+            df['month'] = df.index.month
+        elif 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['hour'] = df['timestamp'].dt.hour
+            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            df['day_of_month'] = df['timestamp'].dt.day
+            df['month'] = df['timestamp'].dt.month
+        else:
+            # Default values if no timestamp available
+            logger.warning("No timestamp found for time feature engineering")
+            df['hour'] = 12
+            df['day_of_week'] = 0
+            df['day_of_month'] = 1
+            df['month'] = 1
+            return df
+
         df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)
 
         # Time of day features (categorical encoding)

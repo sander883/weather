@@ -274,12 +274,14 @@ class DataFetcher:
             target.columns = ['timestamp', 'target']
             target['target'] = (target['target'] > 1.0).astype(int)
 
-        # Select only numeric features (exclude timestamp)
-        numeric_cols = ['temperature', 'humidity', 'wind_speed', 'clouds', 'pressure']
-        features = df[numeric_cols].copy()
+        # Keep timestamp and numeric features for feature engineering
+        feature_cols = ['timestamp', 'temperature', 'humidity', 'wind_speed', 'clouds', 'pressure']
+        available_cols = [col for col in feature_cols if col in df.columns]
+        features = df[available_cols].copy()
 
-        # Ensure all columns are numeric
-        for col in features.columns:
+        # Ensure all numeric columns are numeric
+        numeric_cols = [col for col in available_cols if col != 'timestamp']
+        for col in numeric_cols:
             features[col] = pd.to_numeric(features[col], errors='coerce')
 
         return features, target

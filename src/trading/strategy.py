@@ -137,7 +137,11 @@ class TradingStrategy:
             return 'STOP_LOSS'
 
         # Time-based exit
-        entry_time = datetime.fromisoformat(position['entry_time'])
+        entry_time_str = position.get('entry_time') or position.get('execution_time')
+        if not entry_time_str:
+            return None
+
+        entry_time = datetime.fromisoformat(entry_time_str)
         max_hold = exit_conditions.get('time_based', 86400)
         elapsed = (datetime.utcnow() - entry_time).total_seconds()
 

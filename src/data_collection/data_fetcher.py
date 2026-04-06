@@ -177,9 +177,21 @@ class DataFetcher:
             timestamp = datetime.now().isoformat()
             filename = self.raw_data_dir / f"{location.lower().replace(' ', '_')}_{timestamp.split('T')[0]}.jsonl"
 
+            # Ensure required fields exist with defaults
+            data_with_defaults = {
+                'temperature': data.get('temperature', 15),
+                'humidity': data.get('humidity', 50),
+                'wind_speed': data.get('wind_speed', 0),
+                'clouds': data.get('clouds', 50),
+                'precipitation': data.get('precipitation', 0),
+                'pressure': data.get('pressure', 1013.25),
+                'timestamp': data.get('timestamp', timestamp),
+                **data  # Include all original fields
+            }
+
             with open(filename, 'a') as f:
-                data['saved_at'] = timestamp
-                f.write(json.dumps(data, default=str) + '\n')
+                data_with_defaults['saved_at'] = timestamp
+                f.write(json.dumps(data_with_defaults, default=str) + '\n')
         except Exception as e:
             logger.error(f"Error saving raw data: {e}")
 
@@ -264,9 +276,36 @@ class DataFetcher:
 
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and preprocess data."""
+        # Ensure all required columns exist
+        required_cols = ['temperature', 'humidity', 'wind_speed', 'clouds', 'precipitation', 'pressure']
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = np.nan
+
         # Handle missing values
         numeric_cols = df.select_dtypes(include=[np.number]).columns
-        df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
+
+        # Fill missing values column-wise with column mean, or global mean if all NaN
+        for col in numeric_cols:
+            if df[col].isna().all():
+                # If entire column is NaN, use a default value
+                if col == 'pressure':
+                    df[col] = 1013.25  # Standard atmospheric pressure
+                elif col == 'humidity':
+                    df[col] = 50
+                elif col == 'temperature':
+                    df[col] = 15
+                elif col == 'wind_speed':
+                    df[col] = 0
+                elif col == 'clouds':
+                    df[col] = 50
+                elif col == 'precipitation':
+                    df[col] = 0
+                else:
+                    df[col] = df[col].mean() or 0
+            else:
+                # Fill with column mean
+                df[col] = df[col].fillna(df[col].mean())
 
         # Remove outliers (simple approach)
         for col in ['temperature', 'humidity', 'wind_speed']:

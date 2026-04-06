@@ -27,49 +27,62 @@ class TradingStrategy:
         Returns:
             Trade recommendation or None
         """
-        edge = opportunity.get('edge', 0)
-        liquidity = opportunity.get('liquidity_usd', 0)
-        min_liquidity = self.trading_config.get('entry_conditions', [{}])[0].get('min_liquidity', 500)
-
-        # Check minimum edge
-        if abs(edge) < self.edge_threshold:
-            logger.debug(f"Edge {edge} below threshold {self.edge_threshold}")
+        # Defensive: ensure opportunity is a dict
+        if not isinstance(opportunity, dict):
+            logger.warning(f"Opportunity is not a dict: {type(opportunity)}")
             return None
 
-        # Check minimum liquidity
-        if liquidity < min_liquidity:
-            logger.warning(f"Liquidity {liquidity} below minimum {min_liquidity}")
+        try:
+            edge = opportunity.get('edge', 0)
+            liquidity = opportunity.get('liquidity_usd', 0)
+            min_liquidity = self.trading_config.get('entry_conditions', [{}])[0].get('min_liquidity', 500)
+
+            # Check minimum edge
+            if abs(edge) < self.edge_threshold:
+                logger.debug(f"Edge {edge} below threshold {self.edge_threshold}")
+                return None
+
+            # Check minimum liquidity
+            if liquidity < min_liquidity:
+                logger.warning(f"Liquidity {liquidity} below minimum {min_liquidity}")
+                return None
+
+            # Determine trade direction
+            if edge > self.edge_threshold:
+                action = 'BUY_YES'
+                implied_prob = opportunity.get('predicted_yes_probability', 0.5)
+                market_price = opportunity.get('current_yes_price', 0.5)
+            elif edge < -self.edge_threshold:
+                action = 'BUY_NO'
+                implied_prob = opportunity.get('predicted_no_probability', 0.5)
+                market_price = opportunity.get('current_no_price', 0.5)
+            else:
+                return None
+
+            # Calculate position size
+            position_size = self._calculate_position_size(implied_prob, market_price, opportunity)
+
+            trade = {
+                'market_id': opportunity.get('market_id'),
+                'question': opportunity.get('question'),
+                'location': opportunity.get('location'),
+                'action': action,
+                'position_size': position_size,
+                'entry_price': market_price,
+                'implied_probability': implied_prob,
+                'edge': edge,
+                'profit_target': self.trading_config.get('exit_conditions', [{}])[0].get('profit_target', 0.20),
+                'stop_loss': self.trading_config.get('exit_conditions', [{}])[0].get('stop_loss', -0.10),
+                'max_hold_time': self.trading_config.get('exit_conditions', [{}])[0].get('time_based', 86400),
+                'entry_time': datetime.utcnow().isoformat(),
+                'status': 'PENDING'
+            }
+
+            return trade
+
+        except Exception as e:
+            logger.error(f"Error evaluating opportunity: {e}")
             return None
-
-        # Determine trade direction
-        if edge > self.edge_threshold:
-            action = 'BUY_YES'
-            implied_prob = opportunity['predicted_yes_probability']
-            market_price = opportunity['current_yes_price']
-        elif edge < -self.edge_threshold:
-            action = 'BUY_NO'
-            implied_prob = opportunity['predicted_no_probability']
-            market_price = opportunity['current_no_price']
-        else:
-            return None
-
-        # Calculate position size
-        position_size = self._calculate_position_size(implied_prob, market_price, opportunity)
-
-        return {
-            'market_id': opportunity['market_id'],
-            'question': opportunity['question'],
-            'action': action,
-            'position_size': position_size,
-            'entry_price': market_price,
-            'implied_probability': implied_prob,
-            'edge': edge,
-            'profit_target': self.trading_config.get('exit_conditions', [{}])[0].get('profit_target', 0.20),
-            'stop_loss': self.trading_config.get('exit_conditions', [{}])[0].get('stop_loss', -0.10),
-            'max_hold_time': self.trading_config.get('exit_conditions', [{}])[0].get('time_based', 86400),
-            'entry_time': datetime.utcnow().isoformat(),
-            'status': 'PENDING'
-        }
 
     def _calculate_position_size(self, prob: float, price: float,
                                  opportunity: Dict) -> float:

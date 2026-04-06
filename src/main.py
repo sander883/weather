@@ -158,12 +158,32 @@ class PolymarketWeatherAgent:
                 edge_threshold=self.config.get('trading', {}).get('edge_threshold', 0.05)
             )
 
+            # Defensive: ensure we have a list of dicts
+            if not all_opportunities:
+                logger.debug("No opportunities found")
+                return []
+
+            if not isinstance(all_opportunities, list):
+                logger.error(f"Expected list of opportunities, got {type(all_opportunities)}")
+                return []
+
             # Rank by attractiveness
             ranked = self.trading_strategy.rank_opportunities(all_opportunities)
 
             # Check feasibility with risk manager
             for opp in ranked:
+                # Defensive: ensure opp is a dict
+                if not isinstance(opp, dict):
+                    logger.warning(f"Skipping non-dict opportunity: {type(opp)}")
+                    continue
+
                 trade = self.trading_strategy.evaluate_opportunity(opp)
+
+                # Defensive: ensure trade is a dict before using it
+                if not isinstance(trade, dict):
+                    logger.warning(f"evaluate_opportunity returned non-dict: {type(trade)}")
+                    continue
+
                 if trade:
                     is_feasible, reason = self.risk_manager.check_trade_feasibility(
                         trade,
@@ -179,13 +199,27 @@ class PolymarketWeatherAgent:
             return opportunities
 
         except Exception as e:
-            logger.error(f"Error finding opportunities: {e}")
+            logger.error(f"Error finding opportunities: {e}", exc_info=True)
             return []
 
     def execute_trades(self, trades: list) -> None:
         """Execute trades."""
+        if not trades:
+            logger.debug("No trades to execute")
+            return
+
         for trade in trades:
             try:
+                # Defensive: ensure trade is a dict
+                if not isinstance(trade, dict):
+                    logger.error(f"Invalid trade type {type(trade)}, skipping")
+                    continue
+
+                # Validate required fields
+                if 'market_id' not in trade or 'action' not in trade:
+                    logger.error(f"Trade missing required fields: {list(trade.keys())}")
+                    continue
+
                 logger.info(f"Executing trade: {trade['market_id']} - {trade['action']}")
 
                 # Execute
@@ -195,14 +229,14 @@ class PolymarketWeatherAgent:
                     logger.info(f"Trade executed: {execution['trade_id']}")
                     self.learning_loop.record_prediction(
                         {'rain_probability': trade.get('implied_probability')},
-                        {'id': trade['market_id'], 'question': trade['question'],
+                        {'id': trade['market_id'], 'question': trade.get('question'),
                          'location': trade.get('location')}
                     )
                 else:
                     logger.warning(f"Trade execution failed: {execution}")
 
             except Exception as e:
-                logger.error(f"Error executing trade: {e}")
+                logger.error(f"Error executing trade: {e}", exc_info=True)
 
     def update_positions(self) -> None:
         """Update open positions and check for exits."""

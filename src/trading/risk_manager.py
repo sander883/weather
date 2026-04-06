@@ -37,6 +37,15 @@ class RiskManager:
         Returns:
             Tuple of (is_feasible, reason)
         """
+        # Defensive: ensure trade is a dict
+        if not isinstance(trade, dict):
+            return False, f"Invalid trade type: {type(trade)}"
+
+        # Defensive: ensure open_positions is a list
+        if not isinstance(open_positions, list):
+            logger.warning(f"open_positions is {type(open_positions)}, converting to list")
+            open_positions = list(open_positions) if open_positions else []
+
         # Check circuit breaker
         if self.circuit_breaker_triggered:
             return False, "Circuit breaker triggered"

@@ -50,13 +50,19 @@ class MarketMapper:
         Returns:
             List of market trade recommendations
         """
+        if not isinstance(prediction, dict):
+            logger.error(f"Prediction must be dict, got {type(prediction)}")
+            return []
+
         markets = self.get_markets_by_location(location)
         recommendations = []
 
         for market in markets:
             rec = self._create_recommendation(market, prediction)
-            if rec:
+            if rec and isinstance(rec, dict):
                 recommendations.append(rec)
+            elif rec:
+                logger.warning(f"Recommendation is not dict: {type(rec)}")
 
         return recommendations
 
@@ -129,15 +135,33 @@ class MarketMapper:
         """
         opportunities = []
 
-        for location, prediction in predictions.items():
-            recommendations = self.map_prediction_to_market(location, prediction)
+        if not isinstance(predictions, dict):
+            logger.error(f"Predictions must be dict, got {type(predictions)}")
+            return []
 
-            for rec in recommendations:
-                if abs(rec['edge']) > edge_threshold:
-                    opportunities.append(rec)
+        for location, prediction in predictions.items():
+            try:
+                recommendations = self.map_prediction_to_market(location, prediction)
+
+                # Defensive: ensure recommendations is a list
+                if not isinstance(recommendations, list):
+                    logger.warning(f"map_prediction_to_market returned {type(recommendations)} instead of list")
+                    recommendations = []
+
+                for rec in recommendations:
+                    if isinstance(rec, dict) and abs(rec.get('edge', 0)) > edge_threshold:
+                        opportunities.append(rec)
+
+            except Exception as e:
+                logger.warning(f"Error processing opportunities for {location}: {e}")
+                continue
 
         # Sort by edge size (largest opportunities first)
-        return sorted(opportunities, key=lambda x: abs(x['edge']), reverse=True)
+        try:
+            return sorted(opportunities, key=lambda x: abs(x.get('edge', 0)), reverse=True)
+        except Exception as e:
+            logger.error(f"Error sorting opportunities: {e}")
+            return opportunities
 
     def validate_market_mapping(self) -> Dict[str, Any]:
         """Validate market configurations."""

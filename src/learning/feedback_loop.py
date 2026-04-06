@@ -130,9 +130,9 @@ class LearningLoop:
         try:
             logger.info(f"Starting model retraining for {location}")
 
-            # Load data
+            # Load data (use 30 days for retraining)
             features, target = self.data_fetcher.prepare_training_data(
-                location, days=self.config.get('features', {}).get('lookback_windows', ['3h', '6h', '12h', '24h'])[0]
+                location, days=30
             )
 
             if features.empty:

@@ -154,6 +154,15 @@ class OpenWeatherMapClient(WeatherAPIClient):
 
         return forecasts
 
+    def get_historical_data(self, lat: float, lon: float, days: int = 7) -> Optional[List[Dict]]:
+        """
+        Get historical weather data (uses forecast as proxy).
+
+        OpenWeatherMap free tier doesn't have true historical endpoint,
+        but forecast includes recent data points.
+        """
+        return self.get_forecast(lat, lon, days)
+
 
 class WeatherAPIClient2(WeatherAPIClient):
     """WeatherAPI.com client."""
@@ -234,6 +243,51 @@ class WeatherAPIClient2(WeatherAPIClient):
                 })
 
         return forecasts
+
+    def get_historical_data(self, lat: float, lon: float, days: int = 7) -> Optional[List[Dict]]:
+        """
+        Get historical weather data from WeatherAPI.
+
+        WeatherAPI allows querying past dates with forecast endpoint.
+        """
+        from datetime import datetime, timedelta
+
+        url = f"{self.base_url}/forecast.json"
+        all_historical = []
+
+        try:
+            # Fetch current forecast (includes today and next days)
+            params = {
+                'key': self.api_key,
+                'q': f"{lat},{lon}",
+                'days': min(days, 10),
+                'aqi': 'no'
+            }
+
+            data = self._sync_request(url, params)
+            if not data:
+                return None
+
+            # Extract hourly data
+            for day in data.get('forecast', {}).get('forecastday', []):
+                for hour in day.get('hour', []):
+                    all_historical.append({
+                        'timestamp': datetime.fromisoformat(hour.get('time')),
+                        'temperature': hour.get('temp_c'),
+                        'humidity': hour.get('humidity'),
+                        'wind_speed': hour.get('wind_kph') / 3.6,
+                        'clouds': hour.get('cloud', 0),
+                        'rain_probability': hour.get('chance_of_rain', 0) / 100.0,
+                        'precipitation': hour.get('precip_mm', 0),
+                        'pressure': hour.get('pressure_mb'),
+                        'description': hour.get('condition', {}).get('text', ''),
+                    })
+
+            return all_historical if all_historical else None
+
+        except Exception as e:
+            logger.error(f"Error fetching historical data: {e}")
+            return None
 
 
 class WeatherDataAggregator:
@@ -325,4 +379,26 @@ class WeatherDataAggregator:
             except Exception as e:
                 logger.error(f"Error fetching forecast from {name}: {e}")
 
+        return None
+
+    def get_historical_consensus(self, lat: float, lon: float, days: int = 7) -> Optional[List[Dict]]:
+        """
+        Get historical weather data from multiple sources.
+
+        Returns list of historical data points, preferring primary source
+        """
+        # Try to get from primary source first (WeatherAPI preferred for historical)
+        for name, client in self.clients.items():
+            try:
+                if hasattr(client, 'get_historical_data'):
+                    data = client.get_historical_data(lat, lon, days)
+                    if data:
+                        for item in data:
+                            item['source'] = name
+                        logger.info(f"Fetched {len(data)} historical data points from {name}")
+                        return data
+            except Exception as e:
+                logger.error(f"Error fetching historical data from {name}: {e}")
+
+        logger.warning("No historical data available from any source")
         return None

@@ -77,15 +77,16 @@ class PolymarketWeatherAgent:
         logger.info(f"Training initial model for {location}")
 
         try:
-            # First, collect some weather data
-            logger.info("Collecting weather data before training...")
-            weather = self.data_fetcher.fetch_current_weather(location)
+            # Populate historical data (7 days)
+            logger.info(f"Populating historical data for {location}...")
+            record_count = self.data_fetcher.populate_historical_data(location, days=7)
 
-            if not weather:
-                logger.warning(f"Could not fetch weather for {location}, skipping initial training")
+            if record_count == 0:
+                logger.warning(f"No historical data could be fetched for {location}")
+                logger.info("Will continue with baseline predictions until data accumulates")
                 return False
 
-            logger.info(f"Weather fetched successfully for {location}")
+            logger.info(f"Successfully populated {record_count} historical records for {location}")
 
             # Load historical data
             features, target = self.data_fetcher.prepare_training_data(location, days=30)

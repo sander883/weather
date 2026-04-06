@@ -109,6 +109,68 @@ class DataFetcher:
 
         return all_data
 
+    def populate_historical_data(self, location: str, days: int = 7) -> int:
+        """
+        Fetch and populate historical weather data for a location.
+
+        Args:
+            location: Location name from config
+            days: Number of days of historical data to fetch
+
+        Returns:
+            Number of records fetched
+        """
+        locations = {
+            loc['name']: (loc['lat'], loc['lon'])
+            for loc in self.config.get('weather', {}).get('locations', [])
+        }
+
+        if location not in locations:
+            logger.error(f"Location {location} not found in config")
+            return 0
+
+        lat, lon = locations[location]
+
+        try:
+            logger.info(f"Fetching {days} days of historical data for {location}...")
+            historical_data = self.aggregator.get_historical_consensus(lat, lon, days)
+
+            if not historical_data:
+                logger.warning(f"No historical data available for {location}")
+                return 0
+
+            # Save all historical data points
+            count = 0
+            for data_point in historical_data:
+                self._save_raw_data(location, data_point)
+                count += 1
+
+            logger.info(f"Populated {count} historical records for {location}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error populating historical data for {location}: {e}")
+            return 0
+
+    def populate_all_historical_data(self, days: int = 7) -> Dict[str, int]:
+        """
+        Fetch historical data for all locations.
+
+        Args:
+            days: Number of days to fetch
+
+        Returns:
+            Dict mapping locations to number of records fetched
+        """
+        locations = self.config.get('weather', {}).get('locations', [])
+        results = {}
+
+        for location in locations:
+            count = self.populate_historical_data(location['name'], days)
+            results[location['name']] = count
+
+        return results
+
     def _save_raw_data(self, location: str, data: Dict) -> None:
         """Save raw weather data to file."""
         try:

@@ -171,8 +171,18 @@ class Predictor:
             DataFrame with engineered features or None
         """
         try:
-            # Create single-row DataFrame
-            df = pd.DataFrame([data])
+            # Create single-row DataFrame with required columns
+            data_clean = {
+                'temperature': data.get('temperature', 15),
+                'humidity': data.get('humidity', 50),
+                'wind_speed': data.get('wind_speed', 0),
+                'clouds': data.get('clouds', 50),
+                'pressure': data.get('pressure', 1013.25),
+                'precipitation': data.get('precipitation', 0),
+                'timestamp': data.get('timestamp', datetime.utcnow()),
+            }
+
+            df = pd.DataFrame([data_clean])
 
             if 'timestamp' in df.columns:
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -182,10 +192,15 @@ class Predictor:
             features = self.feature_engineer.engineer_features(df)
 
             if features.empty:
+                logger.warning("Feature engineering produced empty DataFrame")
                 return None
 
             # Keep only numeric columns
             features = features.select_dtypes(include=[np.number])
+
+            if features.empty:
+                logger.warning("No numeric features available after engineering")
+                return None
 
             return features.iloc[[0]] if len(features) > 0 else None
 

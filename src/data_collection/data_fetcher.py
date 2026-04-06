@@ -255,6 +255,11 @@ class DataFetcher:
             logger.error(f"No data available for {location}")
             return pd.DataFrame(), pd.DataFrame()
 
+        # Ensure timestamp is datetime
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df.sort_values('timestamp')
+
         # Clean data
         df = self._clean_data(df)
 
@@ -269,8 +274,13 @@ class DataFetcher:
             target.columns = ['timestamp', 'target']
             target['target'] = (target['target'] > 1.0).astype(int)
 
-        features = df[['timestamp', 'temperature', 'humidity', 'wind_speed',
-                      'clouds', 'pressure']].copy()
+        # Select only numeric features (exclude timestamp)
+        numeric_cols = ['temperature', 'humidity', 'wind_speed', 'clouds', 'pressure']
+        features = df[numeric_cols].copy()
+
+        # Ensure all columns are numeric
+        for col in features.columns:
+            features[col] = pd.to_numeric(features[col], errors='coerce')
 
         return features, target
 

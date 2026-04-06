@@ -173,11 +173,25 @@ class TradingStrategy:
         Returns:
             Sorted list of opportunities
         """
+        # Defensive: ensure opportunities is a list
+        if not isinstance(opportunities, list):
+            logger.warning(f"Opportunities must be list, got {type(opportunities)}")
+            return []
+
+        # Defensive: filter out non-dicts
+        valid_opps = [opp for opp in opportunities if isinstance(opp, dict)]
+        if len(valid_opps) < len(opportunities):
+            logger.warning(f"Filtered {len(opportunities) - len(valid_opps)} non-dict opportunities")
+
         # Score each opportunity
         scored = []
-        for opp in opportunities:
-            score = self._score_opportunity(opp)
-            scored.append((opp, score))
+        for opp in valid_opps:
+            try:
+                score = self._score_opportunity(opp)
+                scored.append((opp, score))
+            except Exception as e:
+                logger.warning(f"Error scoring opportunity: {e}")
+                continue
 
         # Sort by score (highest first)
         scored.sort(key=lambda x: x[1], reverse=True)
@@ -185,21 +199,31 @@ class TradingStrategy:
 
     def _score_opportunity(self, opportunity: Dict) -> float:
         """Score an opportunity (0-100)."""
-        edge = abs(opportunity.get('edge', 0))
-        liquidity = opportunity.get('liquidity_usd', 0)
-        volume = opportunity.get('volume_24h_usd', 0)
+        # Defensive: ensure opportunity is a dict
+        if not isinstance(opportunity, dict):
+            logger.warning(f"Opportunity must be dict, got {type(opportunity)}")
+            return 0.0
 
-        # Edge score (0-50)
-        edge_score = min(50, edge * 100)
+        try:
+            edge = abs(opportunity.get('edge', 0))
+            liquidity = opportunity.get('liquidity_usd', 0)
+            volume = opportunity.get('volume_24h_usd', 0)
 
-        # Liquidity score (0-30)
-        liquidity_score = min(30, (liquidity / 1000))
+            # Edge score (0-50)
+            edge_score = min(50, edge * 100)
 
-        # Volume score (0-20)
-        volume_score = min(20, (volume / 500))
+            # Liquidity score (0-30)
+            liquidity_score = min(30, (liquidity / 1000))
 
-        total_score = edge_score + liquidity_score + volume_score
-        return total_score
+            # Volume score (0-20)
+            volume_score = min(20, (volume / 500))
+
+            total_score = edge_score + liquidity_score + volume_score
+            return total_score
+
+        except Exception as e:
+            logger.error(f"Error calculating opportunity score: {e}")
+            return 0.0
 
     def get_portfolio_allocation(self, opportunities: List[Dict],
                                 capital: float = 10000) -> List[Dict]:

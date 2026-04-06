@@ -303,29 +303,58 @@ class PolymarketWeatherAgent:
             logger.info("Starting trading cycle")
 
             # Get predictions
-            predictions = self.get_predictions()
-            if not predictions:
-                logger.warning("No predictions available")
+            try:
+                predictions = self.get_predictions()
+                if not predictions:
+                    logger.warning("No predictions available")
+                    return
+            except Exception as e:
+                logger.error(f"Error getting predictions: {e}", exc_info=True)
                 return
 
             # Find opportunities
-            trades = self.find_trading_opportunities(predictions)
+            try:
+                trades = self.find_trading_opportunities(predictions)
+                if not isinstance(trades, list):
+                    logger.error(f"find_trading_opportunities returned {type(trades)}, expected list")
+                    return
+            except Exception as e:
+                logger.error(f"Error finding opportunities: {e}", exc_info=True)
+                return
 
             # Execute trades
-            if trades:
-                self.execute_trades(trades)
+            try:
+                if trades:
+                    if not all(isinstance(t, dict) for t in trades):
+                        bad_trades = [t for t in trades if not isinstance(t, dict)]
+                        logger.error(f"Invalid trades in list: {[type(t) for t in bad_trades]}")
+                        trades = [t for t in trades if isinstance(t, dict)]
+
+                    if trades:
+                        self.execute_trades(trades)
+            except Exception as e:
+                logger.error(f"Error executing trades: {e}", exc_info=True)
 
             # Update positions
-            self.update_positions()
+            try:
+                self.update_positions()
+            except Exception as e:
+                logger.error(f"Error updating positions: {e}", exc_info=True)
 
             # Check retraining
-            self.check_retraining()
+            try:
+                self.check_retraining()
+            except Exception as e:
+                logger.error(f"Error checking retraining: {e}", exc_info=True)
 
             # Print status
-            self.print_status()
+            try:
+                self.print_status()
+            except Exception as e:
+                logger.error(f"Error printing status: {e}", exc_info=True)
 
         except Exception as e:
-            logger.error(f"Error in trading cycle: {e}")
+            logger.error(f"Unexpected error in trading cycle: {e}", exc_info=True)
 
     def run(self, interval: int = 3600) -> None:
         """

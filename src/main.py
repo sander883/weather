@@ -5,27 +5,33 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Dict, Any
-from dotenv import load_dotenv
 import os
 from pathlib import Path
+import sys
 
-# Load environment variables from .env file
-# Find the project root and load .env from there
+# Load environment variables from .env file FIRST, before any other imports
+# This ensures all dependencies see the environment variables
 project_root = Path(__file__).parent.parent
 env_file = project_root / '.env'
-load_dotenv(dotenv_path=env_file, override=True)
 
-# Debug: Print if .env was found
+# Load .env manually to ensure it works
 if env_file.exists():
-    print(f"✓ Loaded .env from: {env_file}")
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
+    sys.stdout.write(f"✓ Manually loaded .env from: {env_file}\n")
 else:
-    print(f"✗ .env file not found at: {env_file}")
+    sys.stdout.write(f"✗ .env file not found at: {env_file}\n")
 
 # Verify API keys are loaded
-if os.getenv('OPENWEATHERMAP_API_KEY'):
-    print("✓ OPENWEATHERMAP_API_KEY loaded")
-else:
-    print("✗ OPENWEATHERMAP_API_KEY not found")
+owm_key = os.getenv('OPENWEATHERMAP_API_KEY')
+weather_key = os.getenv('WEATHERAPI_KEY')
+sys.stdout.write(f"OPENWEATHERMAP_API_KEY: {owm_key[:10] if owm_key else 'NOT FOUND'}...\n")
+sys.stdout.write(f"WEATHERAPI_KEY: {weather_key[:10] if weather_key else 'NOT FOUND'}...\n")
+sys.stdout.flush()
 
 from src.utils.logger import get_logger
 from src.utils.helpers import load_config, load_markets

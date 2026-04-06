@@ -77,11 +77,21 @@ class PolymarketWeatherAgent:
         logger.info(f"Training initial model for {location}")
 
         try:
+            # First, collect some weather data
+            logger.info("Collecting weather data before training...")
+            weather = self.data_fetcher.fetch_current_weather(location)
+
+            if not weather:
+                logger.warning(f"Could not fetch weather for {location}, skipping initial training")
+                return False
+
+            logger.info(f"Weather fetched successfully for {location}")
+
             # Load historical data
             features, target = self.data_fetcher.prepare_training_data(location, days=30)
 
             if features.empty:
-                logger.error(f"No training data available for {location}")
+                logger.warning(f"No historical data yet for {location} - will retrain after data collection")
                 return False
 
             # Engineer features
@@ -292,10 +302,9 @@ class PolymarketWeatherAgent:
         self.running = True
         logger.info(f"Starting agent with {interval}s interval")
 
-        # Train initial model
-        if not self.train_initial_model():
-            logger.error("Failed to train initial model")
-            return
+        # Try to train initial model (may skip on first run if no data)
+        self.train_initial_model()
+        logger.info("Model training attempt complete")
 
         try:
             iteration = 0

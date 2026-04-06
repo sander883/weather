@@ -36,9 +36,10 @@ class Predictor:
         Returns:
             Dictionary with probability predictions
         """
+        # Use simple baseline if no model is trained
         if self.model_trainer is None or self.model_trainer.model is None:
-            logger.error("Model not initialized")
-            return None
+            logger.warning("No trained model, using baseline prediction")
+            return self._baseline_prediction(data)
 
         try:
             # Convert data to feature vector
@@ -135,6 +136,29 @@ class Predictor:
         df = pd.DataFrame(predictions)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         return df.sort_values('timestamp')
+
+    def _baseline_prediction(self, data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Make baseline prediction based on raw weather data.
+
+        Used when no ML model is available yet.
+        """
+        # Simple heuristic: humidity > 70% and clouds > 50% = higher rain chance
+        humidity = data.get('humidity', 50)
+        clouds = data.get('clouds', 50)
+        wind_speed = data.get('wind_speed', 0)
+
+        # Baseline probability: average of indicators
+        rain_prob = (humidity / 100 + clouds / 100 + min(wind_speed / 20, 1.0)) / 3
+
+        return {
+            'rain_probability': float(min(rain_prob, 1.0)),
+            'no_rain_probability': float(max(1 - rain_prob, 0.0)),
+            'prediction': 'rain' if rain_prob > 0.5 else 'no_rain',
+            'confidence': 0.5,  # Low confidence for baseline
+            'timestamp': datetime.utcnow().isoformat(),
+            'model_type': 'baseline'
+        }
 
     def _prepare_features(self, data: Dict[str, Any]) -> Optional[pd.DataFrame]:
         """

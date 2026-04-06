@@ -38,7 +38,7 @@ class Predictor:
         """
         # Use simple baseline if no model is trained
         if self.model_trainer is None or self.model_trainer.model is None:
-            logger.warning("No trained model, using baseline prediction")
+            logger.debug("No trained model available, using baseline prediction")
             return self._baseline_prediction(data)
 
         try:
@@ -46,25 +46,37 @@ class Predictor:
             features = self._prepare_features(data)
 
             if features is None or features.empty:
-                logger.error("Could not prepare features")
-                return None
+                logger.warning("Could not prepare features, falling back to baseline")
+                return self._baseline_prediction(data)
+
+            # Ensure features are numeric only
+            numeric_features = features.select_dtypes(include=[np.number])
+
+            if numeric_features.empty:
+                logger.warning("No numeric features available, using baseline")
+                return self._baseline_prediction(data)
 
             # Get prediction
-            X = features.values.reshape(1, -1)
+            X = numeric_features.values.reshape(1, -1)
 
-            probability = self.model_trainer.model.predict_proba(X)[0, 1]
+            try:
+                probability = self.model_trainer.model.predict_proba(X)[0, 1]
+            except Exception as e:
+                logger.warning(f"Model prediction failed ({e}), using baseline")
+                return self._baseline_prediction(data)
 
             return {
                 'rain_probability': float(probability),
                 'no_rain_probability': float(1 - probability),
                 'prediction': 'rain' if probability > 0.5 else 'no_rain',
                 'confidence': float(max(probability, 1 - probability)),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.utcnow().isoformat(),
+                'model_type': 'xgboost'
             }
 
         except Exception as e:
-            logger.error(f"Prediction failed: {e}")
-            return None
+            logger.warning(f"Prediction failed ({e}), falling back to baseline")
+            return self._baseline_prediction(data)
 
     def predict_batch(self, data_list: list) -> list:
         """

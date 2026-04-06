@@ -57,20 +57,35 @@ class ModelTrainer:
             features = features.iloc[:min_len]
             target = target.iloc[:min_len]
 
+        # Drop non-numeric and timestamp columns
+        numeric_features = features.select_dtypes(include=[np.number])
+
+        # Remove timestamp if it exists
+        if 'timestamp' in numeric_features.columns:
+            numeric_features = numeric_features.drop('timestamp', axis=1)
+
+        logger.info(f"Using {len(numeric_features.columns)} numeric features")
+
         # Fill NaN values
-        features = features.fillna(features.mean())
+        numeric_features = numeric_features.fillna(numeric_features.mean())
         target = target.fillna(target.mean())
+
+        # Ensure target is 1D
+        if hasattr(target, 'values'):
+            target_array = target.values.ravel()
+        else:
+            target_array = target.ravel()
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
-            features, target,
+            numeric_features, target_array,
             test_size=test_size,
             random_state=42,
             shuffle=False  # Keep temporal order
         )
 
         logger.info(f"Training set size: {len(X_train)}, Test set size: {len(X_test)}")
-        return X_train.values, X_test.values, y_train.values, y_test.values
+        return X_train.values, X_test.values, y_train, y_test
 
     def train(self, X_train: np.ndarray, y_train: np.ndarray,
               X_val: Optional[np.ndarray] = None,

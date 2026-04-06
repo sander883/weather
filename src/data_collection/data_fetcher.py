@@ -172,20 +172,23 @@ class DataFetcher:
         return results
 
     def _save_raw_data(self, location: str, data: Dict) -> None:
-        """Save raw weather data to file."""
+        """Save raw weather data to file with all required fields."""
         try:
             timestamp = datetime.now().isoformat()
             filename = self.raw_data_dir / f"{location.lower().replace(' ', '_')}_{timestamp.split('T')[0]}.jsonl"
 
-            # Ensure required fields exist with defaults
+            # Ensure ALL required fields exist with sensible defaults
             data_with_defaults = {
-                'temperature': data.get('temperature', 15),
-                'humidity': data.get('humidity', 50),
-                'wind_speed': data.get('wind_speed', 0),
-                'clouds': data.get('clouds', 50),
-                'precipitation': data.get('precipitation', 0),
-                'pressure': data.get('pressure', 1013.25),
                 'timestamp': data.get('timestamp', timestamp),
+                'temperature': float(data.get('temperature') or 15),
+                'humidity': float(data.get('humidity') or 50),
+                'wind_speed': float(data.get('wind_speed') or 0),
+                'clouds': float(data.get('clouds') or 50),
+                'precipitation': float(data.get('precipitation') or data.get('precip_mm') or 0),
+                'pressure': float(data.get('pressure') or data.get('pressure_mb') or 1013.25),
+                'rain_probability': float(data.get('rain_probability') or data.get('rain_chance') or data.get('chance_of_rain', 0)) / 100.0
+                    if data.get('rain_probability') or data.get('rain_chance') or data.get('chance_of_rain')
+                    else 0.0,
                 **data  # Include all original fields
             }
 

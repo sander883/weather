@@ -1,9 +1,10 @@
 """Trading strategy module."""
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from src.utils.logger import get_logger
 from src.utils.helpers import calculate_kelly_size
+from src.models.schemas import MarketOpportunity, Trade, TradingConfig
 
 logger = get_logger(__name__)
 
@@ -17,24 +18,28 @@ class TradingStrategy:
         self.edge_threshold = self.trading_config.get('edge_threshold', 0.05)
         self.position_sizing = self.trading_config.get('position_sizing', {})
 
-    def evaluate_opportunity(self, opportunity: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def evaluate_opportunity(self, opportunity: Union[Dict[str, Any], MarketOpportunity]) -> Optional[Union[Dict[str, Any], Trade]]:
         """
         Evaluate if a trading opportunity meets strategy criteria.
 
         Args:
-            opportunity: Market opportunity dict
+            opportunity: Market opportunity dict or MarketOpportunity model
 
         Returns:
-            Trade recommendation or None
+            Trade recommendation dict or Trade model, or None
         """
+        # Convert Pydantic model to dict if needed
+        opp_dict = opportunity.model_dump() if isinstance(opportunity, MarketOpportunity) else opportunity
+        return_model = isinstance(opportunity, MarketOpportunity)
+
         # Defensive: ensure opportunity is a dict
-        if not isinstance(opportunity, dict):
-            logger.warning(f"Opportunity is not a dict: {type(opportunity)}")
+        if not isinstance(opp_dict, dict):
+            logger.warning(f"Opportunity is not a dict: {type(opp_dict)}")
             return None
 
         try:
-            edge = opportunity.get('edge', 0)
-            liquidity = opportunity.get('liquidity_usd', 0)
+            edge = opp_dict.get('edge', 0)
+            liquidity = opp_dict.get('liquidity_usd', 0)
             min_liquidity = self.trading_config.get('entry_conditions', [{}])[0].get('min_liquidity', 500)
 
             # Check minimum edge
@@ -50,22 +55,22 @@ class TradingStrategy:
             # Determine trade direction
             if edge > self.edge_threshold:
                 action = 'BUY_YES'
-                implied_prob = opportunity.get('predicted_yes_probability', 0.5)
-                market_price = opportunity.get('current_yes_price', 0.5)
+                implied_prob = opp_dict.get('predicted_yes_probability', 0.5)
+                market_price = opp_dict.get('current_yes_price', 0.5)
             elif edge < -self.edge_threshold:
                 action = 'BUY_NO'
-                implied_prob = opportunity.get('predicted_no_probability', 0.5)
-                market_price = opportunity.get('current_no_price', 0.5)
+                implied_prob = opp_dict.get('predicted_no_probability', 0.5)
+                market_price = opp_dict.get('current_no_price', 0.5)
             else:
                 return None
 
             # Calculate position size
-            position_size = self._calculate_position_size(implied_prob, market_price, opportunity)
+            position_size = self._calculate_position_size(implied_prob, market_price, opp_dict)
 
-            trade = {
-                'market_id': opportunity.get('market_id'),
-                'question': opportunity.get('question'),
-                'location': opportunity.get('location'),
+            trade_dict = {
+                'market_id': opp_dict.get('market_id'),
+                'question': opp_dict.get('question'),
+                'location': opp_dict.get('location'),
                 'action': action,
                 'position_size': position_size,
                 'entry_price': market_price,
@@ -74,11 +79,14 @@ class TradingStrategy:
                 'profit_target': self.trading_config.get('exit_conditions', [{}])[0].get('profit_target', 0.20),
                 'stop_loss': self.trading_config.get('exit_conditions', [{}])[0].get('stop_loss', -0.10),
                 'max_hold_time': self.trading_config.get('exit_conditions', [{}])[0].get('time_based', 86400),
-                'entry_time': datetime.utcnow().isoformat(),
+                'entry_time': datetime.utcnow(),
                 'status': 'PENDING'
             }
 
-            return trade
+            # Return as Pydantic model if input was model
+            if return_model:
+                return Trade(**trade_dict)
+            return trade_dict
 
         except Exception as e:
             logger.error(f"Error evaluating opportunity: {e}")

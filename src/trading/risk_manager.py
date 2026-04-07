@@ -1,9 +1,10 @@
 """Risk management module."""
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union, Tuple
 from datetime import datetime, timedelta
 
 from src.utils.logger import get_logger
+from src.models.schemas import Trade, Position, PortfolioStats
 
 logger = get_logger(__name__)
 
@@ -25,21 +26,24 @@ class RiskManager:
         self.trade_log = []
         self.circuit_breaker_triggered = False
 
-    def check_trade_feasibility(self, trade: Dict[str, Any],
-                               open_positions: List[Dict]) -> tuple:
+    def check_trade_feasibility(self, trade: Union[Dict[str, Any], Trade],
+                               open_positions: List[Union[Dict, Position]]) -> Tuple[bool, str]:
         """
         Check if a trade can be executed given constraints.
 
         Args:
-            trade: Trade to evaluate
-            open_positions: Current open positions
+            trade: Trade dict or Trade model to evaluate
+            open_positions: Current open positions (dicts or Position models)
 
         Returns:
             Tuple of (is_feasible, reason)
         """
+        # Convert Pydantic model to dict if needed
+        trade_dict = trade.model_dump() if isinstance(trade, Trade) else trade
+
         # Defensive: ensure trade is a dict
-        if not isinstance(trade, dict):
-            return False, f"Invalid trade type: {type(trade)}"
+        if not isinstance(trade_dict, dict):
+            return False, f"Invalid trade type: {type(trade_dict)}"
 
         # Defensive: ensure open_positions is a list
         if not isinstance(open_positions, list):
@@ -64,8 +68,15 @@ class RiskManager:
             return False, f"Max concurrent positions reached ({len(open_positions)} / {max_positions})"
 
         # Check concentration limit
-        position_size = trade.get('position_size', 0)
-        total_exposure = sum(p.get('position_size', 0) for p in open_positions)
+        position_size = trade_dict.get('position_size', 0)
+
+        # Convert positions to dicts if they're Pydantic models
+        positions_list = [
+            p.model_dump() if isinstance(p, Position) else p
+            for p in open_positions
+        ]
+
+        total_exposure = sum(p.get('position_size', 0) for p in positions_list)
         max_concentration = self.position_config.get('max_concentration', 0.30)
         max_exposure = self.initial_capital * max_concentration
 
@@ -148,15 +159,15 @@ class RiskManager:
         """Reset daily loss tracking."""
         self.daily_start_capital = self.current_capital
 
-    def get_portfolio_stats(self) -> Dict[str, Any]:
-        """Get current portfolio statistics."""
+    def get_portfolio_stats(self) -> Union[Dict[str, Any], PortfolioStats]:
+        """Get current portfolio statistics as dict or PortfolioStats model."""
         closed_trades = [t for t in self.trade_log if t.get('type') == 'CLOSE']
         pnls = [t.get('pnl', 0) for t in closed_trades]
 
         capital_change = self.current_capital - self.initial_capital
         return_percent = (capital_change / self.initial_capital) * 100 if self.initial_capital else 0
 
-        return {
+        stats_dict = {
             'initial_capital': self.initial_capital,
             'current_capital': self.current_capital,
             'total_pnl': capital_change,
@@ -168,6 +179,8 @@ class RiskManager:
             'avg_pnl': sum(pnls) / len(pnls) if pnls else 0,
             'win_rate': sum(1 for p in pnls if p > 0) / len(pnls) if pnls else 0,
         }
+
+        return stats_dict
 
     def validate_position_correlation(self, new_position: Dict[str, Any],
                                      existing_positions: List[Dict]) -> bool:

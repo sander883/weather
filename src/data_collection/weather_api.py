@@ -51,6 +51,7 @@ class WeatherAPIClient:
 
     def _sync_request(self, url: str, params: Dict = None) -> Optional[Dict]:
         """Make synchronous HTTP request."""
+        response = None
         try:
             response = requests.get(
                 url,
@@ -64,7 +65,9 @@ class WeatherAPIClient:
             logger.error(f"Request timeout to {url}")
             return None
         except requests.exceptions.HTTPError as e:
-            logger.error(f"API HTTP error {response.status_code}: {response.text}")
+            status = response.status_code if response else 'unknown'
+            text = response.text if response else str(e)
+            logger.error(f"API HTTP error {status}: {text}")
             return None
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {e}")
@@ -103,21 +106,29 @@ class OpenWeatherMapClient(WeatherAPIClient):
         if not data:
             return None
 
-        return {
-            'timestamp': datetime.fromtimestamp(data['dt']),
-            'location': data.get('name', ''),
-            'temperature': data['main'].get('temp'),
-            'feels_like': data['main'].get('feels_like'),
-            'humidity': data['main'].get('humidity'),
-            'pressure': data['main'].get('pressure'),
-            'clouds': data.get('clouds', {}).get('all', 0),
-            'wind_speed': data.get('wind', {}).get('speed', 0),
-            'wind_direction': data.get('wind', {}).get('deg', 0),
-            'precipitation': data.get('rain', {}).get('1h', 0) +
-                            data.get('snow', {}).get('1h', 0),
-            'description': data['weather'][0].get('main', '') if data.get('weather') else '',
-            'raw': data
-        }
+        try:
+            # Handle timestamp safely
+            dt = data.get('dt')
+            timestamp = datetime.fromtimestamp(dt) if dt else datetime.utcnow()
+
+            return {
+                'timestamp': timestamp,
+                'location': data.get('name', ''),
+                'temperature': data.get('main', {}).get('temp'),
+                'feels_like': data.get('main', {}).get('feels_like'),
+                'humidity': data.get('main', {}).get('humidity'),
+                'pressure': data.get('main', {}).get('pressure'),
+                'clouds': data.get('clouds', {}).get('all', 0),
+                'wind_speed': data.get('wind', {}).get('speed', 0),
+                'wind_direction': data.get('wind', {}).get('deg', 0),
+                'precipitation': data.get('rain', {}).get('1h', 0) +
+                                data.get('snow', {}).get('1h', 0),
+                'description': data.get('weather', [{}])[0].get('main', '') if data.get('weather') else '',
+                'raw': data
+            }
+        except Exception as e:
+            logger.error(f"Error parsing OpenWeatherMap response: {e}")
+            return None
 
     def get_forecast(self, lat: float, lon: float, days: int = 5) -> Optional[List[Dict]]:
         """
@@ -139,18 +150,24 @@ class OpenWeatherMapClient(WeatherAPIClient):
             return None
 
         forecasts = []
-        for item in data.get('list', []):
-            forecasts.append({
-                'timestamp': datetime.fromtimestamp(item['dt']),
-                'temperature': item['main'].get('temp'),
-                'humidity': item['main'].get('humidity'),
-                'wind_speed': item.get('wind', {}).get('speed', 0),
-                'clouds': item.get('clouds', {}).get('all', 0),
-                'rain_probability': item.get('pop', 0),  # probability of precipitation
-                'precipitation': item.get('rain', {}).get('3h', 0) +
-                                item.get('snow', {}).get('3h', 0),
-                'description': item['weather'][0].get('main', '') if item.get('weather') else '',
-            })
+        try:
+            for item in data.get('list', []):
+                dt = item.get('dt')
+                timestamp = datetime.fromtimestamp(dt) if dt else datetime.utcnow()
+
+                forecasts.append({
+                    'timestamp': timestamp,
+                    'temperature': item.get('main', {}).get('temp'),
+                    'humidity': item.get('main', {}).get('humidity'),
+                    'wind_speed': item.get('wind', {}).get('speed', 0),
+                    'clouds': item.get('clouds', {}).get('all', 0),
+                    'rain_probability': item.get('pop', 0),  # probability of precipitation
+                    'precipitation': item.get('rain', {}).get('3h', 0) +
+                                    item.get('snow', {}).get('3h', 0),
+                    'description': item.get('weather', [{}])[0].get('main', '') if item.get('weather') else '',
+                })
+        except Exception as e:
+            logger.error(f"Error parsing forecast items: {e}")
 
         return forecasts
 
@@ -193,22 +210,37 @@ class WeatherAPIClient2(WeatherAPIClient):
         current = data.get('current', {})
         location = data.get('location', {})
 
-        return {
-            'timestamp': datetime.fromisoformat(current.get('last_updated')),
-            'location': f"{location.get('name')}, {location.get('country')}",
-            'temperature': current.get('temp_c'),
-            'feels_like': current.get('feelslike_c'),
-            'humidity': current.get('humidity'),
-            'pressure': current.get('pressure_mb'),
-            'clouds': current.get('cloud', 0),
-            'wind_speed': current.get('wind_kph') / 3.6,  # Convert to m/s
-            'wind_direction': current.get('wind_degree', 0),
-            'precipitation': current.get('precip_mm', 0),
-            'rain_chance': current.get('chance_of_rain', 0),
-            'snow_chance': current.get('chance_of_snow', 0),
-            'description': current.get('condition', {}).get('text', ''),
-            'raw': data
-        }
+        try:
+            # Handle timestamp safely
+            last_updated = current.get('last_updated')
+            if last_updated:
+                timestamp = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+            else:
+                timestamp = datetime.utcnow()
+
+            # Safe wind speed conversion
+            wind_kph = current.get('wind_kph', 0)
+            wind_ms = wind_kph / 3.6 if wind_kph else 0
+
+            return {
+                'timestamp': timestamp,
+                'location': f"{location.get('name')}, {location.get('country')}",
+                'temperature': current.get('temp_c'),
+                'feels_like': current.get('feelslike_c'),
+                'humidity': current.get('humidity'),
+                'pressure': current.get('pressure_mb'),
+                'clouds': current.get('cloud', 0),
+                'wind_speed': wind_ms,
+                'wind_direction': current.get('wind_degree', 0),
+                'precipitation': current.get('precip_mm', 0),
+                'rain_chance': current.get('chance_of_rain', 0),
+                'snow_chance': current.get('chance_of_snow', 0),
+                'description': current.get('condition', {}).get('text', ''),
+                'raw': data
+            }
+        except Exception as e:
+            logger.error(f"Error parsing WeatherAPI response: {e}")
+            return None
 
     def get_forecast(self, lat: float, lon: float, days: int = 5) -> Optional[List[Dict]]:
         """
@@ -229,18 +261,36 @@ class WeatherAPIClient2(WeatherAPIClient):
             return None
 
         forecasts = []
-        for day in data.get('forecast', {}).get('forecastday', []):
-            for hour in day.get('hour', []):
-                forecasts.append({
-                    'timestamp': datetime.fromisoformat(hour.get('time')),
-                    'temperature': hour.get('temp_c'),
-                    'humidity': hour.get('humidity'),
-                    'wind_speed': hour.get('wind_kph') / 3.6,  # Convert to m/s
-                    'clouds': hour.get('cloud', 0),
-                    'rain_probability': hour.get('chance_of_rain', 0) / 100.0,
-                    'precipitation': hour.get('precip_mm', 0),
-                    'description': hour.get('condition', {}).get('text', ''),
-                })
+        try:
+            for day in data.get('forecast', {}).get('forecastday', []):
+                for hour in day.get('hour', []):
+                    # Safe timestamp parsing
+                    time_str = hour.get('time')
+                    if time_str:
+                        timestamp = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                    else:
+                        timestamp = datetime.utcnow()
+
+                    # Safe wind speed conversion
+                    wind_kph = hour.get('wind_kph', 0)
+                    wind_ms = wind_kph / 3.6 if wind_kph else 0
+
+                    # Safe rain probability conversion (convert from 0-100 to 0-1)
+                    rain_prob = hour.get('chance_of_rain', 0)
+                    rain_prob_norm = rain_prob / 100.0 if rain_prob else 0
+
+                    forecasts.append({
+                        'timestamp': timestamp,
+                        'temperature': hour.get('temp_c'),
+                        'humidity': hour.get('humidity'),
+                        'wind_speed': wind_ms,
+                        'clouds': hour.get('cloud', 0),
+                        'rain_probability': rain_prob_norm,
+                        'precipitation': hour.get('precip_mm', 0),
+                        'description': hour.get('condition', {}).get('text', ''),
+                    })
+        except Exception as e:
+            logger.error(f"Error parsing WeatherAPI forecast: {e}")
 
         return forecasts
 

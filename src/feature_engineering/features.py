@@ -77,7 +77,7 @@ class FeatureEngineer:
             features_df = self._add_seasonal_features(features_df)
 
         # Forward fill any remaining NaN (better than dropping data)
-        features_df = features_df.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        features_df = features_df.ffill().bfill().fillna(0)
 
         # Keep only numeric columns for model
         numeric_cols = features_df.select_dtypes(include=[np.number]).columns
@@ -92,7 +92,7 @@ class FeatureEngineer:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         for col in numeric_cols:
             if df[col].isna().any():
-                df[col] = df[col].fillna(method='ffill').fillna(method='bfill')
+                df[col] = df[col].ffill().bfill()
                 # If still NaN (first rows), use column mean
                 if df[col].isna().any():
                     df[col] = df[col].fillna(df[col].mean())

@@ -305,8 +305,14 @@ class ModelTrainer:
 
     def get_latest_model(self) -> Optional[str]:
         """Get path to most recently trained model."""
-        models = list(self.model_dir.glob('model_*.pkl'))
+        models = [
+            model_path
+            for model_path in self.model_dir.glob('model_*.pkl')
+            if not model_path.name.endswith('_scaler.pkl')
+        ]
         if not models:
             return None
 
-        return str(max(models, key=lambda p: p.stat().st_mtime))
+        # Tie-break on filename to keep selection deterministic when mtimes match
+        latest = max(models, key=lambda p: (p.stat().st_mtime, p.name))
+        return str(latest)

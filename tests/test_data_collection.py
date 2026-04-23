@@ -421,6 +421,26 @@ class TestDataFetcher:
         if not features.empty:
             assert isinstance(target, pd.Series)
 
+    def test_load_historical_data_mixed_timestamp_formats(self, config, tmp_path):
+        """Test loading data when timestamp strings use mixed formats."""
+        fetcher = DataFetcher(config)
+        fetcher.raw_data_dir = tmp_path
+
+        history_file = tmp_path / 'new_york_2026-04-08.jsonl'
+        records = [
+            {'timestamp': '2026-04-08 11:00:00', 'temperature': 10, 'humidity': 60},
+            {'timestamp': '2026-04-08 11:05:00.123456', 'temperature': 11, 'humidity': 61},
+            {'timestamp': '2026-04-08T11:10:00Z', 'temperature': 12, 'humidity': 62},
+        ]
+        with open(history_file, 'w') as f:
+            for record in records:
+                f.write(f"{pd.Series(record).to_json()}\n")
+
+        result = fetcher.load_historical_data('New York', days=30)
+
+        assert len(result) == 3
+        assert pd.api.types.is_datetime64_any_dtype(result['timestamp'])
+
 
 # ============================================================================
 # TESTS: Data Validation

@@ -3,7 +3,7 @@
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 import os
 from pathlib import Path
@@ -287,7 +287,7 @@ class PolymarketWeatherAgent:
         logger.info("=" * 60)
         logger.info("AGENT STATUS")
         logger.info("=" * 60)
-        logger.info(f"Time: {datetime.utcnow().isoformat()}")
+        logger.info(f"Time: {datetime.now(timezone.utc).isoformat()}")
         logger.info(f"Capital: ${portfolio.get('current_capital', 0):.2f} "
                    f"(Change: {portfolio.get('total_pnl_percent', 0):.2f}%)")
         logger.info(f"Trades: {execution.get('total_trades', 0)} "

@@ -14,6 +14,18 @@ from src.utils.helpers import load_config
 logger = get_logger(__name__)
 
 
+def _parse_timestamp(value: Any) -> Optional[datetime]:
+    """Parse mixed timestamp formats into a naive UTC datetime."""
+    if value is None:
+        return None
+
+    parsed = pd.to_datetime(value, format='mixed', errors='coerce', utc=True)
+    if pd.isna(parsed):
+        return None
+
+    return parsed.tz_convert(None).to_pydatetime()
+
+
 class DataFetcher:
     """Collect and manage weather data for trading."""
 
@@ -226,7 +238,9 @@ class DataFetcher:
                     with open(file, 'r') as f:
                         for line in f:
                             record = json.loads(line)
-                            if datetime.fromisoformat(record.get('timestamp', '')) > cutoff_date:
+                            parsed_timestamp = _parse_timestamp(record.get('timestamp'))
+                            if parsed_timestamp and parsed_timestamp > cutoff_date:
+                                record['timestamp'] = parsed_timestamp
                                 all_records.append(record)
                 except Exception as e:
                     logger.warning(f"Error reading {file}: {e}")
@@ -235,7 +249,10 @@ class DataFetcher:
                 return pd.DataFrame()
 
             df = pd.DataFrame(all_records)
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            df = df.dropna(subset=['timestamp'])
+            if df.empty:
+                return pd.DataFrame()
             df = df.sort_values('timestamp').drop_duplicates(subset=['timestamp'])
 
             logger.info(f"Loaded {len(df)} records for {location}")
